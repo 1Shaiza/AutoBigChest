@@ -1,6 +1,10 @@
 local SERVER_HOP = true -- server hop after breaking all chests
 local SERVER_HOP_DELAY = 10 -- delay in seconds before server hopping (set to 0 for no delay)
-local CHEST_BREAK_DELAY = 1 -- delay in seconds before breaking next chest (set to 0 for no delay)
+local CHEST_BREAK_DELAY = 2 -- delay in seconds before breaking next chest (set to 0 for no delay)
+local START_DELAY = 0 -- delay in seconds before starting (set to 0 for no delay)
+
+
+
 
 
 local BigChests = {
@@ -10,10 +14,11 @@ local BigChests = {
     [4] = "Heaven Gates"
 }
 
-
 repeat
     task.wait()
 until game:IsLoaded()
+
+task.wait(START_DELAY)
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -199,32 +204,60 @@ if SERVER_HOP then
     print("Server hopping in " .. SERVER_HOP_DELAY .. " seconds")
     task.wait(SERVER_HOP_DELAY)
 
-    local sfUrl = "https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=%s&limit=%s&excludeFullGames=true" 
-    local req = request({ Url = string.format(sfUrl, 8737899170, "Desc", 50) }) 
-    local body = game:GetService("HttpService"):JSONDecode(req.Body) 
-    local deep = math.random(1, 3)
-    if deep > 1 then
-        for i = 1, deep, 1 do
-            req = request({ Url = string.format(sfUrl .. "&cursor=" .. body.nextPageCursor, 8737899170, "Desc", 50) }) 
-            body = game:GetService("HttpService"):JSONDecode(req.Body) 
-            task.wait(0.1)
+    local PlaceID = game.PlaceId
+    local AllIDs = {}
+    local foundAnything = ""
+    local actualHour = os.date("!*t").hour
+    local function tp()
+        local Site;
+        if foundAnything == "" then
+            Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/8737899170/servers/Public?sortOrder=Asc&limit=100'))
+        else
+            Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/8737899170/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
         end
-    end
-    local servers = {} 
-    if body and body.data then
-        for i, v in next, body.data do
-            if type(v) == "table" and tonumber(v.playing) and tonumber(v.maxPlayers) and v.playing < v.maxPlayers and v.id ~= game.JobId then
-                table.insert(servers, 1, v.id)
+        local ID = ""
+        if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
+            foundAnything = Site.nextPageCursor
+        end
+        local num = 0;
+        for i,v in pairs(Site.data) do
+            local Possible = true
+            ID = tostring(v.id)
+            if tonumber(v.maxPlayers) > tonumber(v.playing) then
+                for _,Existing in pairs(AllIDs) do
+                    if num ~= 0 then
+                        if ID == tostring(Existing) then
+                            Possible = false
+                        end
+                    else
+                        if tonumber(actualHour) ~= tonumber(Existing) then
+                            pcall(function()
+                                AllIDs = {}
+                                table.insert(AllIDs, actualHour)
+                            end)
+                        end
+                    end
+                    num = num + 1
+                end
+                if Possible == true then
+                    table.insert(AllIDs, ID)
+                    task.wait()
+                    pcall(function()
+                        task.wait()
+                        game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, ID, game.Players.LocalPlayer)
+                    end)
+                    task.wait(4)
+                end
             end
         end
     end
-    local randomCount = #servers
-    if not randomCount then
-        randomCount = 2
-    end
-    while true do
-        game:GetService("TeleportService"):TeleportToPlaceInstance(8737899170, servers[math.random(1, randomCount)], LocalPlayer)
-        task.wait(0.5)
-        game:GetService("TeleportService"):Teleport(8737899170, LocalPlayer)
+
+    while task.wait() do
+        pcall(function()
+            tp()
+            if foundAnything ~= "" then
+                tp()
+            end
+        end)
     end
 end
